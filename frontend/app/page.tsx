@@ -10,12 +10,22 @@ interface Surah {
   name_arabic: string;
 }
 
+interface Word {
+  id: number;
+  text_uthmani: string;
+  position: number;
+}
+
 interface Verse {
   id: number;
   verse_key: string;
   text_uthmani: string;
-  audio: { url: string };
+  audio: { 
+    url: string;
+    segments?: number[][];
+  };
   translations: { text: string }[];
+  words: Word[];
 }
 
 // Ensure Arabic tashkeel are removed for comparison
@@ -101,6 +111,7 @@ export default function Home() {
   // States for Listen Mode
   const [activeTab, setActiveTab] = useState<'recite' | 'listen'>('recite');
   const [currentListenVerseIndex, setCurrentListenVerseIndex] = useState(0);
+  const [currentWordIndex, setCurrentWordIndex] = useState<number | null>(null);
   const listenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const recognitionRef = useRef<any>(null);
@@ -120,14 +131,30 @@ export default function Home() {
       stopRecording();
       
       setCurrentListenVerseIndex(0);
+      setCurrentWordIndex(null);
     } else {
       setVerses([]);
       setCurrentVerseIndex(0);
       setCurrentListenVerseIndex(0);
+      setCurrentWordIndex(null);
       setRecognizedText("");
       setInterimText("");
     }
   }, [selectedSurah, activeTab]);
+
+  const handleTimeUpdate = () => {
+    if (!listenAudioRef.current || !verses[currentListenVerseIndex]) return;
+    
+    const currentTimeMs = listenAudioRef.current.currentTime * 1000;
+    const segments = verses[currentListenVerseIndex].audio.segments;
+    
+    if (segments) {
+      const activeSegment = segments.find(s => currentTimeMs >= s[2] && currentTimeMs <= s[3]);
+      if (activeSegment) {
+        setCurrentWordIndex(activeSegment[0]);
+      }
+    }
+  };
 
   const checkVerseComplete = (targetVerse: string, spokenText: string) => {
     const targetWordsRaw = normalizeArabicText(targetVerse).split(" ").filter(w => w.length > 0);
@@ -296,6 +323,7 @@ export default function Home() {
       <div
         className="text-right text-3xl leading-loose font-arabic mb-6"
         style={{ fontFamily: "'Uthmani', serif" }}
+        dir="rtl"
       >
         {targetWordsRaw.map((targetWord, index) => {
           let matchFound = false;
@@ -352,7 +380,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-white font-sans transition-colors duration-300">
       <header className="sticky top-0 z-50 backdrop-blur-md bg-white/70 dark:bg-zinc-900/70 border-b border-slate-200 dark:border-zinc-800 p-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
           <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-emerald-500 to-teal-500">
             Tilwah Checker
           </h1>
@@ -413,7 +441,7 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto p-4 py-8">
+      <main className="max-w-6xl mx-auto p-4 py-8">
         {activeTab === 'listen' ? (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -423,87 +451,113 @@ export default function Home() {
             {loadingVerses ? (
                <Loader2 className="w-10 h-10 animate-spin text-emerald-500 mb-4" />
             ) : selectedSurah && verses.length > 0 ? (
-              <div className="flex flex-col items-center w-full max-w-4xl">
-               <div className="flex flex-col items-center w-full max-w-md gap-8 py-10 sticky top-[80px] bg-white dark:bg-zinc-900 z-10 p-4 border-b border-slate-100 dark:border-zinc-800">
-                 <Headphones className="w-16 h-16 text-emerald-500 opacity-80 drop-shadow-lg" />
-                 <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-emerald-500 to-teal-500">
-                    Listen to Surah
-                 </h2>
-                 <p className="text-slate-500 text-center mb-2">
-                    Playing Ayah {verses[currentListenVerseIndex]?.verse_key}
-                 </p>
-                 <audio 
-                   controls 
-                   autoPlay 
-                   src={`https://verses.quran.com/${verses[currentListenVerseIndex]?.audio?.url}`} 
-                   className="w-full mt-4" 
-                   ref={listenAudioRef}
-                   onEnded={() => {
-                     if (currentListenVerseIndex < verses.length - 1) {
-                       setCurrentListenVerseIndex(prev => prev + 1);
-                     }
-                   }}
-                 />
-               </div>
-               
-               {verses && verses.length > 0 && (
-                 <div className="w-full mt-6 pt-10 px-4 max-w-4xl">
-                   {verses.map((verse, index) => {
-                     const isPlaying = index === currentListenVerseIndex;
-                     
-                     return (
-                       <div 
-                         key={verse.id} 
-                         ref={el => {
-                           if (isPlaying && el) {
-                             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                           }
-                         }}
-                         className={`mb-12 p-6 rounded-2xl transition-all duration-500 ${
-                           isPlaying 
-                             ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/30 scale-[1.02] shadow-xl shadow-emerald-500/5' 
-                             : 'bg-transparent border border-transparent opacity-60'
-                         }`}
-                         onClick={() => setCurrentListenVerseIndex(index)}
-                       >
-                         <div className="flex justify-between items-center mb-4 cursor-pointer">
-                           <span className={`text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
-                              isPlaying ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/20' : 'text-slate-500 bg-slate-100 dark:bg-slate-800'
-                           }`}>
-                             Ayah {verse.verse_key}
-                           </span>
-                           {isPlaying && (
-                             <div className="flex gap-1" title="Playing now...">
-                               <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse audio-bar-1"></div>
-                               <div className="w-1 h-4 bg-emerald-500 rounded-full animate-pulse audio-bar-2" style={{ animationDelay: '0.2s' }}></div>
-                               <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse audio-bar-3" style={{ animationDelay: '0.4s' }}></div>
-                             </div>
-                           )}
-                         </div>
-                         <p
-                           className={`text-right text-3xl leading-loose font-arabic mb-6 transition-colors duration-500 cursor-pointer ${
-                             isPlaying ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-slate-800 dark:text-slate-200'
-                           }`}
-                           style={{ fontFamily: "'Uthmani', serif" }}
-                           dir="rtl"
-                         >
-                           {verse.text_uthmani}
-                         </p>
-                         {verse.translations && verse.translations[0] && (
-                           <p
-                             className={`text-right text-base italic transition-colors duration-500 ${
-                               isPlaying ? 'text-emerald-600 dark:text-emerald-500/80' : 'text-slate-500 dark:text-slate-400'
-                             }`}
-                             dangerouslySetInnerHTML={{
-                               __html: verse.translations[0].text,
-                             }}
-                           />
-                         )}
-                       </div>
-                     );
-                   })}
-                 </div>
-               )}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+                {/* Left Column: Player (Sticky) */}
+                <div className="md:col-span-1">
+                  <div className="flex flex-col items-center gap-6 p-6 bg-slate-50 dark:bg-zinc-800/50 rounded-2xl sticky top-[100px] border border-slate-100 dark:border-zinc-800">
+                    <Headphones className="w-16 h-16 text-emerald-500 opacity-80 drop-shadow-lg" />
+                    <div className="text-center">
+                      <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-emerald-500 to-teal-500 mb-2">
+                        Listen to Surah
+                      </h2>
+                      <p className="text-slate-500 dark:text-slate-400 font-medium">
+                        Playing Ayah {verses[currentListenVerseIndex]?.verse_key}
+                      </p>
+                    </div>
+                    
+                    <audio 
+                      controls 
+                      autoPlay 
+                      src={`https://verses.quran.com/${verses[currentListenVerseIndex]?.audio?.url}`} 
+                      className="w-full" 
+                      ref={listenAudioRef}
+                      onTimeUpdate={handleTimeUpdate}
+                      onEnded={() => {
+                        setCurrentWordIndex(null);
+                        if (currentListenVerseIndex < verses.length - 1) {
+                          setCurrentListenVerseIndex(prev => prev + 1);
+                        }
+                      }}
+                    />
+
+                    <div className="w-full pt-4 border-t border-slate-200 dark:border-zinc-700">
+                      <p className="text-xs text-slate-400 dark:text-zinc-500 text-center uppercase tracking-wider font-semibold">
+                        Reciter: Mishary Al-Afasy
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Right Column: Verses */}
+                <div className="md:col-span-2">
+                  <div className="space-y-6">
+                    {verses.map((verse, index) => {
+                      const isPlaying = index === currentListenVerseIndex;
+                      
+                      return (
+                        <div 
+                          key={verse.id} 
+                          ref={el => {
+                            if (isPlaying && el) {
+                              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }}
+                          className={`p-6 rounded-2xl transition-all duration-500 cursor-pointer ${
+                            isPlaying 
+                              ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/30 shadow-lg shadow-emerald-500/5 ring-1 ring-emerald-500/20' 
+                              : 'bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 hover:border-emerald-200 dark:hover:border-emerald-800/50'
+                          }`}
+                          onClick={() => setCurrentListenVerseIndex(index)}
+                        >
+                          <div className="flex justify-between items-center mb-4">
+                            <span className={`text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
+                               isPlaying ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/20' : 'text-slate-500 bg-slate-100 dark:bg-slate-800'
+                            }`}>
+                              Ayah {verse.verse_key}
+                            </span>
+                            {isPlaying && (
+                              <div className="flex gap-1">
+                                <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
+                                <div className="w-1 h-4 bg-emerald-500 rounded-full animate-pulse delay-75"></div>
+                                <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse delay-150"></div>
+                              </div>
+                            )}
+                          </div>
+                          <div
+                             className={`text-right text-3xl leading-loose font-arabic mb-4 transition-colors duration-500 flex flex-wrap gap-x-2 gap-y-4 ${
+                              isPlaying ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-slate-800 dark:text-slate-200'
+                            }`}
+                            style={{ fontFamily: "'Uthmani', serif" }}
+                            dir="rtl"
+                          >
+                            {verse.words ? verse.words.map((word) => (
+                              <span 
+                                key={word.id} 
+                                className={`transition-all duration-300 ${
+                                  isPlaying && currentWordIndex === word.position - 1
+                                    ? 'text-emerald-500 scale-110 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]' 
+                                    : ''
+                                }`}
+                              >
+                                {word.text_uthmani}
+                              </span>
+                            )) : verse.text_uthmani}
+                          </div>
+                          {verse.translations && verse.translations[0] && (
+                            <p
+                              className={`text-right text-base italic transition-colors duration-500 ${
+                                isPlaying ? 'text-emerald-600 dark:text-emerald-500/80' : 'text-slate-500 dark:text-slate-400'
+                              }`}
+                              dangerouslySetInnerHTML={{
+                                __html: verse.translations[0].text,
+                              }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             ) : (
                <p className="text-slate-500">Please select a Surah to listen to.</p>
