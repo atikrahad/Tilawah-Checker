@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Mic, Play, Square, Loader2, RefreshCcw, EyeOff, Eye } from "lucide-react";
+import { Mic, Play, Square, Loader2, RefreshCcw, EyeOff, Eye, Headphones } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Surah {
@@ -98,6 +98,11 @@ export default function Home() {
   const [interimText, setInterimText] = useState("");
   const [isPracticeMode, setIsPracticeMode] = useState(false);
 
+  // States for Listen Mode
+  const [activeTab, setActiveTab] = useState<'recite' | 'listen'>('recite');
+  const [fullAudioLoading, setFullAudioLoading] = useState(false);
+  const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null);
+
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -113,13 +118,33 @@ export default function Home() {
       setRecognizedText("");
       setInterimText("");
       stopRecording();
+      
+      // Fetch full audio if in listen mode
+      if (activeTab === 'listen') {
+        fetchFullAudio(selectedSurah);
+      }
     } else {
       setVerses([]);
       setCurrentVerseIndex(0);
       setRecognizedText("");
       setInterimText("");
     }
-  }, [selectedSurah]);
+  }, [selectedSurah, activeTab]);
+
+  const fetchFullAudio = async (surahId: number) => {
+    setFullAudioLoading(true);
+    try {
+      const res = await fetch(`/api/quran/surahs/${surahId}/audio`);
+      const data = await res.json();
+      if (data && data.audio_file) {
+         setFullAudioUrl(data.audio_file.audio_url);
+      }
+    } catch (error) {
+      console.error("Failed to fetch full audio");
+    } finally {
+      setFullAudioLoading(false);
+    }
+  };
 
   const checkVerseComplete = (targetVerse: string, spokenText: string) => {
     const targetWordsRaw = normalizeArabicText(targetVerse).split(" ").filter(w => w.length > 0);
@@ -366,25 +391,70 @@ export default function Home() {
               </select>
             )}
 
+            {/* Tab Toggles */}
+            <div className="flex bg-slate-100 dark:bg-zinc-800 p-1 rounded-full">
+              <button
+                onClick={() => setActiveTab('recite')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                  activeTab === 'recite' ? "bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300 hover:text-emerald-500"
+                }`}
+              >
+                <Mic className="w-4 h-4 scale-90" /> Recite
+              </button>
+              <button
+                onClick={() => setActiveTab('listen')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                  activeTab === 'listen' ? "bg-white dark:bg-zinc-700 shadow-sm text-emerald-600 dark:text-emerald-400" : "text-slate-600 dark:text-slate-300 hover:text-emerald-500"
+                }`}
+              >
+                <Headphones className="w-4 h-4 scale-90" /> Listen
+              </button>
+            </div>
+
             {/* Practice Mode Toggle */}
-            <button
-              onClick={() => setIsPracticeMode(!isPracticeMode)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
-                isPracticeMode
-                  ? "bg-emerald-500 text-white shadow-emerald-500/30 shadow-md"
-                  : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
-              }`}
-              title="Practice Mode (Hide text before reciting)"
-            >
-              {isPracticeMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              Practice Mode
-            </button>
+            {activeTab === 'recite' && (
+              <button
+                onClick={() => setIsPracticeMode(!isPracticeMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all ${
+                  isPracticeMode
+                    ? "bg-emerald-500 text-white shadow-emerald-500/30 shadow-md"
+                    : "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                }`}
+                title="Practice Mode (Hide text before reciting)"
+              >
+                {isPracticeMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                Practice Mode
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto p-4 py-8">
-        {loadingVerses ? (
+        {activeTab === 'listen' ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-zinc-900 rounded-3xl p-8 shadow-xl shadow-slate-200/50 dark:shadow-black/50 border border-slate-100 dark:border-zinc-800 flex flex-col items-center justify-center min-h-[400px]"
+          >
+            {fullAudioLoading ? (
+               <Loader2 className="w-10 h-10 animate-spin text-emerald-500 mb-4" />
+            ) : selectedSurah && fullAudioUrl ? (
+               <div className="flex flex-col items-center w-full max-w-md gap-8 py-10">
+                 <Headphones className="w-20 h-20 text-emerald-500 opacity-80 drop-shadow-lg" />
+                 <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-emerald-500 to-teal-500">
+                    Full Surah Audio
+                 </h2>
+                 <p className="text-slate-500 text-center mb-4">
+                    Relax and listen to the beautiful recitation by Mishary Rashid Alafasy.
+                 </p>
+                 <audio controls autoPlay src={fullAudioUrl} className="w-full mt-4" />
+               </div>
+            ) : (
+               <p className="text-slate-500">Please select a Surah to listen to.</p>
+            )}
+          </motion.div>
+        ) : loadingVerses ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-10 h-10 animate-spin text-emerald-500 mb-4" />
             <p className="text-slate-500">Loading Verses...</p>
