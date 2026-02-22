@@ -9,7 +9,7 @@ export async function GET(
     
     // translations=131 (Clear Quran), audio=7 (Mishary)
     const res = await fetch(
-      `https://api.quran.com/api/v4/verses/by_chapter/${id}?language=en&fields=text_uthmani&audio=7&translations=131`
+      `https://api.quran.com/api/v4/verses/by_chapter/${id}?language=en&fields=text_uthmani&audio=7&translations=131&words=true&word_fields=text_uthmani&per_page=300`
     );
     const data = await res.json();
     
