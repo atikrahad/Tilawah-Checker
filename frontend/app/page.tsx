@@ -100,8 +100,8 @@ export default function Home() {
 
   // States for Listen Mode
   const [activeTab, setActiveTab] = useState<'recite' | 'listen'>('recite');
-  const [fullAudioLoading, setFullAudioLoading] = useState(false);
-  const [fullAudioUrl, setFullAudioUrl] = useState<string | null>(null);
+  const [currentListenVerseIndex, setCurrentListenVerseIndex] = useState(0);
+  const listenAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -119,32 +119,15 @@ export default function Home() {
       setInterimText("");
       stopRecording();
       
-      // Fetch full audio if in listen mode
-      if (activeTab === 'listen') {
-        fetchFullAudio(selectedSurah);
-      }
+      setCurrentListenVerseIndex(0);
     } else {
       setVerses([]);
       setCurrentVerseIndex(0);
+      setCurrentListenVerseIndex(0);
       setRecognizedText("");
       setInterimText("");
     }
   }, [selectedSurah, activeTab]);
-
-  const fetchFullAudio = async (surahId: number) => {
-    setFullAudioLoading(true);
-    try {
-      const res = await fetch(`/api/quran/surahs/${surahId}/audio`);
-      const data = await res.json();
-      if (data && data.audio_file) {
-         setFullAudioUrl(data.audio_file.audio_url);
-      }
-    } catch (error) {
-      console.error("Failed to fetch full audio");
-    } finally {
-      setFullAudioLoading(false);
-    }
-  };
 
   const checkVerseComplete = (targetVerse: string, spokenText: string) => {
     const targetWordsRaw = normalizeArabicText(targetVerse).split(" ").filter(w => w.length > 0);
@@ -437,19 +420,91 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white dark:bg-zinc-900 rounded-3xl p-8 shadow-xl shadow-slate-200/50 dark:shadow-black/50 border border-slate-100 dark:border-zinc-800 flex flex-col items-center justify-center min-h-[400px]"
           >
-            {fullAudioLoading ? (
+            {loadingVerses ? (
                <Loader2 className="w-10 h-10 animate-spin text-emerald-500 mb-4" />
-            ) : selectedSurah && fullAudioUrl ? (
-               <div className="flex flex-col items-center w-full max-w-md gap-8 py-10">
-                 <Headphones className="w-20 h-20 text-emerald-500 opacity-80 drop-shadow-lg" />
+            ) : selectedSurah && verses.length > 0 ? (
+              <div className="flex flex-col items-center w-full max-w-4xl">
+               <div className="flex flex-col items-center w-full max-w-md gap-8 py-10 sticky top-[80px] bg-white dark:bg-zinc-900 z-10 p-4 border-b border-slate-100 dark:border-zinc-800">
+                 <Headphones className="w-16 h-16 text-emerald-500 opacity-80 drop-shadow-lg" />
                  <h2 className="text-3xl font-bold bg-clip-text text-transparent bg-linear-to-r from-emerald-500 to-teal-500">
-                    Full Surah Audio
+                    Listen to Surah
                  </h2>
-                 <p className="text-slate-500 text-center mb-4">
-                    Relax and listen to the beautiful recitation by Mishary Rashid Alafasy.
+                 <p className="text-slate-500 text-center mb-2">
+                    Playing Ayah {verses[currentListenVerseIndex]?.verse_key}
                  </p>
-                 <audio controls autoPlay src={fullAudioUrl} className="w-full mt-4" />
+                 <audio 
+                   controls 
+                   autoPlay 
+                   src={`https://verses.quran.com/${verses[currentListenVerseIndex]?.audio?.url}`} 
+                   className="w-full mt-4" 
+                   ref={listenAudioRef}
+                   onEnded={() => {
+                     if (currentListenVerseIndex < verses.length - 1) {
+                       setCurrentListenVerseIndex(prev => prev + 1);
+                     }
+                   }}
+                 />
                </div>
+               
+               {verses && verses.length > 0 && (
+                 <div className="w-full mt-6 pt-10 px-4 max-w-4xl">
+                   {verses.map((verse, index) => {
+                     const isPlaying = index === currentListenVerseIndex;
+                     
+                     return (
+                       <div 
+                         key={verse.id} 
+                         ref={el => {
+                           if (isPlaying && el) {
+                             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                           }
+                         }}
+                         className={`mb-12 p-6 rounded-2xl transition-all duration-500 ${
+                           isPlaying 
+                             ? 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800/30 scale-[1.02] shadow-xl shadow-emerald-500/5' 
+                             : 'bg-transparent border border-transparent opacity-60'
+                         }`}
+                         onClick={() => setCurrentListenVerseIndex(index)}
+                       >
+                         <div className="flex justify-between items-center mb-4 cursor-pointer">
+                           <span className={`text-xs font-bold px-3 py-1.5 rounded-full transition-colors ${
+                              isPlaying ? 'text-emerald-600 bg-emerald-100 dark:bg-emerald-500/20' : 'text-slate-500 bg-slate-100 dark:bg-slate-800'
+                           }`}>
+                             Ayah {verse.verse_key}
+                           </span>
+                           {isPlaying && (
+                             <div className="flex gap-1" title="Playing now...">
+                               <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse audio-bar-1"></div>
+                               <div className="w-1 h-4 bg-emerald-500 rounded-full animate-pulse audio-bar-2" style={{ animationDelay: '0.2s' }}></div>
+                               <div className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse audio-bar-3" style={{ animationDelay: '0.4s' }}></div>
+                             </div>
+                           )}
+                         </div>
+                         <p
+                           className={`text-right text-3xl leading-loose font-arabic mb-6 transition-colors duration-500 cursor-pointer ${
+                             isPlaying ? 'text-emerald-700 dark:text-emerald-400 font-bold' : 'text-slate-800 dark:text-slate-200'
+                           }`}
+                           style={{ fontFamily: "'Uthmani', serif" }}
+                           dir="rtl"
+                         >
+                           {verse.text_uthmani}
+                         </p>
+                         {verse.translations && verse.translations[0] && (
+                           <p
+                             className={`text-right text-base italic transition-colors duration-500 ${
+                               isPlaying ? 'text-emerald-600 dark:text-emerald-500/80' : 'text-slate-500 dark:text-slate-400'
+                             }`}
+                             dangerouslySetInnerHTML={{
+                               __html: verse.translations[0].text,
+                             }}
+                           />
+                         )}
+                       </div>
+                     );
+                   })}
+                 </div>
+               )}
+              </div>
             ) : (
                <p className="text-slate-500">Please select a Surah to listen to.</p>
             )}
